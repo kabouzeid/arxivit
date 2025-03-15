@@ -26,7 +26,7 @@ LATEX_INJECT = r"""\AtBeginDocument{
 
 PT_PER_INCH = 72.27  # TeX point conversion (1 inch = 72.27 pt, approx.)
 
-console = Console()
+console = Console(soft_wrap=True)
 
 
 @dataclass
