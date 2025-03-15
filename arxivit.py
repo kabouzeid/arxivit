@@ -44,7 +44,9 @@ def arxivit(
     jpeg_quality: int,
 ):
     compile_dir = Path(tempfile.mkdtemp())
-    console.print(f"🔨 Compiling LaTeX… ({compile_dir})")
+    console.print(
+        f"🔨 Compiling LaTeX… ({compile_dir / input_file.with_suffix('.log').name})"
+    )
     stdout, deps_file = compile_latex(input_file, compile_dir)
 
     console.print("📜 Parsing compile log…")
