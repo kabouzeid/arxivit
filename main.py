@@ -277,11 +277,13 @@ if __name__ == "__main__":
         help="Path to the input LaTeX file",
     )
     parser.add_argument(
+        "-o",
         "--output",
         type=str,
         help="Path to the output. Can be a dir or .tar file.",
     )
     parser.add_argument(
+        "-d",
         "--dpi",
         type=int,
         default=300,
