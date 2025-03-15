@@ -1,7 +1,7 @@
 # arxivit 🧹
 Robust arXiv LaTeX cleaner with DPI-based image rescaling.
 
-## Installation (🚧 soon)
+## Installation
 
 ```bash
 pip install arxivit
