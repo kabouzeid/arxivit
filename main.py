@@ -36,7 +36,13 @@ class ImageInfo:
     height_pt: float
 
 
-def arxivit(input_file: Path, output_dir: Path, target_dpi: int):
+def arxivit(
+    input_file: Path,
+    output_dir: Path,
+    target_dpi: int,
+    force_jpeg: bool,
+    jpeg_quality: int,
+):
     compile_dir = Path(tempfile.mkdtemp())
     console.print(f"🔨 Compiling LaTeX… ({compile_dir})")
     stdout, deps_file = compile_latex(input_file, compile_dir)
@@ -82,7 +88,12 @@ def arxivit(input_file: Path, output_dir: Path, target_dpi: int):
                 break
         if dep.is_absolute():
             result, old_size, new_size = process_dependency(
-                dep, output_dir / dep.name, image_info, target_dpi
+                dep,
+                output_dir / dep.name,
+                image_info,
+                target_dpi,
+                force_jpeg,
+                jpeg_quality,
             )
         else:
             dst = output_dir / dep
@@ -91,7 +102,12 @@ def arxivit(input_file: Path, output_dir: Path, target_dpi: int):
                 raise ValueError(f"Dependency {dep} resolves outside of output_dir")
             dst.parent.mkdir(parents=True, exist_ok=True)
             result, old_size, new_size = process_dependency(
-                input_file.parent / dep, dst, image_info, target_dpi
+                input_file.parent / dep,
+                dst,
+                image_info,
+                target_dpi,
+                force_jpeg,
+                jpeg_quality,
             )
         console.print(
             Text(f"   - {str(dep)}")
@@ -108,7 +124,12 @@ def arxivit(input_file: Path, output_dir: Path, target_dpi: int):
 
 
 def process_dependency(
-    dep: Path, dst: Path, image_info: ImageInfo | None, target_dpi: int
+    dep: Path,
+    dst: Path,
+    image_info: ImageInfo | None,
+    target_dpi: int,
+    force_jpeg: bool,
+    jpeg_quality: int,
 ) -> tuple[str | None, int, int]:
     result = None
     match dep.suffix.lower():
@@ -117,7 +138,14 @@ def process_dependency(
         case ".pdf":
             result = process_pdf(dep, dst, image_info, target_dpi)
         case ".png" | ".jpg" | ".jpeg":
-            result = process_image(dep, dst, image_info, target_dpi, force_jpeg=True)
+            result = process_image(
+                dep,
+                dst,
+                image_info,
+                target_dpi,
+                force_jpeg=force_jpeg,
+                jpeg_quality=jpeg_quality,
+            )
         case _:
             shutil.copy(dep, dst)
     return result, dep.stat().st_size, dst.stat().st_size
@@ -137,8 +165,8 @@ def process_image(
     dst: Path,
     image_info: ImageInfo | None,
     target_dpi: int,
-    force_jpeg: bool = False,
-    jpeg_quality: int = 95,
+    force_jpeg: bool,
+    jpeg_quality: int,
 ) -> str | None:
     result = None
     with Image.open(src) as im:
@@ -273,6 +301,19 @@ def cli():
         default=300,
         help="Target DPI of the output_dir images",
     )
+    parser.add_argument(
+        "--no-force-jpeg",
+        action="store_false",
+        dest="force_jpeg",
+        help="Don't automatically convert all images to JPEGs.",
+    )
+    parser.add_argument(
+        "--jpeg-quality",
+        type=int,
+        default=95,
+        help="JPEG quality (0-100)",
+    )
+
     args = parser.parse_args()
 
     input_file = Path(args.input_file)
@@ -284,11 +325,13 @@ def cli():
     if output.suffix == ".tar":
         with tempfile.TemporaryDirectory() as tmp_output:
             tmp_output = Path(tmp_output)
-            arxivit(input_file, tmp_output, args.dpi)
+            arxivit(
+                input_file, tmp_output, args.dpi, args.force_jpeg, args.jpeg_quality
+            )
             shutil.make_archive(str(output.with_suffix("")), "tar", tmp_output)
     else:
         os.makedirs(output)  # fail early if it already exists
-        arxivit(input_file, output, args.dpi)
+        arxivit(input_file, output, args.dpi, args.force_jpeg, args.jpeg_quality)
 
     console.print(f"🎉 Done! Output saved to {output}")
 
