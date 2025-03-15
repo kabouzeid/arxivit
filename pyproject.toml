@@ -8,7 +8,6 @@ dependencies = [
     "humanize>=4.12.1",
     "pillow>=11.1.0",
     "rich>=13.9.4",
-    "tqdm>=4.67.1",
 ]
 
 [project.scripts]
