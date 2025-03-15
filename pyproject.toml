@@ -1,9 +1,9 @@
 [project]
 name = "arxivit"
-version = "0.1.0"
+version = "0.2.0"
 description = "Robust arXiv LaTeX cleaner with DPI-based image rescaling."
 readme = "README.md"
-requires-python = ">=3.13"
+requires-python = ">=3.10"
 dependencies = [
     "humanize>=4.12.1",
     "pillow>=11.1.0",
