@@ -12,7 +12,7 @@ dependencies = [
 ]
 
 [project.scripts]
-arxivit = "main:main"
+arxivit = "main:cli"
 
 [tool.uv]
 package = true

@@ -251,7 +251,7 @@ def parse_compile_log(
     return deps, bbl_file, image_infos
 
 
-def main():
+def cli():
     parser = argparse.ArgumentParser(
         description="Robust arXiv LaTeX cleaner with DPI-based image rescaling."
     )
@@ -294,4 +294,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    cli()
