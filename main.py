@@ -36,12 +36,25 @@ class ImageInfo:
     height_pt: float
 
 
-def main(input_file: str | Path, output_dir: str | Path, target_dpi: int):
+def main(input_file: str | Path, output: str | Path | None, target_dpi: int):
     input_file = Path(input_file)
-    output_dir = Path(output_dir)
+    if output is None:
+        output = input_file.parent.with_suffix(".arxiv.tar")
+    output = Path(output)
 
-    os.makedirs(output_dir)  # fail early if it already exists
+    if output.suffix == ".tar":
+        with tempfile.TemporaryDirectory() as tmp_output:
+            tmp_output = Path(tmp_output)
+            arxivit(input_file, tmp_output, target_dpi)
+            shutil.make_archive(str(output.with_suffix("")), "tar", tmp_output)
+    else:
+        os.makedirs(output)  # fail early if it already exists
+        arxivit(input_file, output, target_dpi)
 
+    console.print(f"🎉 Done! Output saved to {output}")
+
+
+def arxivit(input_file: Path, output_dir: Path, target_dpi: int):
     compile_dir = Path(tempfile.mkdtemp())
     console.print(f"🔨 Compiling LaTeX… ({compile_dir})")
     stdout, deps_file = compile_latex(input_file, compile_dir)
@@ -259,14 +272,14 @@ def parse_compile_log(
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="arxiv-latex-graphics")
     parser.add_argument(
-        "input_file",
+        "input_tex",
         type=str,
         help="Path to the input LaTeX file",
     )
     parser.add_argument(
-        "output_dir",
+        "--output",
         type=str,
-        help="Path to the output_dir LaTeX dir",
+        help="Path to the output. Can be a dir or .tar file.",
     )
     parser.add_argument(
         "--dpi",
@@ -277,7 +290,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     main(
-        input_file=args.input_file,
-        output_dir=args.output_dir,
+        input_file=args.input_tex,
+        output=args.output,
         target_dpi=args.dpi,
     )
