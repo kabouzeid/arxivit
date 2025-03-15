@@ -1,14 +1,20 @@
 [project]
 name = "arxivit"
-version = "0.2.0"
+version = "0.2.1"
 description = "Robust arXiv LaTeX cleaner with DPI-based image rescaling."
 readme = "README.md"
+authors = [
+    { name = "Karim Abou Zeid", email = "contact@ka.codes" }
+]
 requires-python = ">=3.10"
 dependencies = [
     "humanize>=4.12.1",
     "pillow>=11.1.0",
     "rich>=13.9.4",
 ]
+
+[project.urls]
+"Source Code" = "https://github.com/kabouzeid/arxivit"
 
 [project.scripts]
 arxivit = "arxivit:cli"
