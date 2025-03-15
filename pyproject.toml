@@ -10,3 +10,9 @@ dependencies = [
     "rich>=13.9.4",
     "tqdm>=4.67.1",
 ]
+
+[project.scripts]
+arxivit = "main:main"
+
+[tool.uv]
+package = true

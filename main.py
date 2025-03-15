@@ -36,24 +36,6 @@ class ImageInfo:
     height_pt: float
 
 
-def main(input_file: str | Path, output: str | Path | None, target_dpi: int):
-    input_file = Path(input_file)
-    if output is None:
-        output = input_file.parent.with_suffix(".arxiv.tar")
-    output = Path(output)
-
-    if output.suffix == ".tar":
-        with tempfile.TemporaryDirectory() as tmp_output:
-            tmp_output = Path(tmp_output)
-            arxivit(input_file, tmp_output, target_dpi)
-            shutil.make_archive(str(output.with_suffix("")), "tar", tmp_output)
-    else:
-        os.makedirs(output)  # fail early if it already exists
-        arxivit(input_file, output, target_dpi)
-
-    console.print(f"🎉 Done! Output saved to {output}")
-
-
 def arxivit(input_file: Path, output_dir: Path, target_dpi: int):
     compile_dir = Path(tempfile.mkdtemp())
     console.print(f"🔨 Compiling LaTeX… ({compile_dir})")
@@ -269,10 +251,10 @@ def parse_compile_log(
     return deps, bbl_file, image_infos
 
 
-if __name__ == "__main__":
+def main():
     parser = argparse.ArgumentParser(description="arxiv-latex-graphics")
     parser.add_argument(
-        "input_tex",
+        "input_file",
         type=str,
         help="Path to the input LaTeX file",
     )
@@ -291,8 +273,23 @@ if __name__ == "__main__":
     )
     args = parser.parse_args()
 
-    main(
-        input_file=args.input_tex,
-        output=args.output,
-        target_dpi=args.dpi,
-    )
+    input_file = Path(args.input_file)
+    output = args.output
+    if output is None:
+        output = input_file.parent.with_suffix(".arxiv.tar")
+    output = Path(output)
+
+    if output.suffix == ".tar":
+        with tempfile.TemporaryDirectory() as tmp_output:
+            tmp_output = Path(tmp_output)
+            arxivit(input_file, tmp_output, args.dpi)
+            shutil.make_archive(str(output.with_suffix("")), "tar", tmp_output)
+    else:
+        os.makedirs(output)  # fail early if it already exists
+        arxivit(input_file, output, args.dpi)
+
+    console.print(f"🎉 Done! Output saved to {output}")
+
+
+if __name__ == "__main__":
+    main()
