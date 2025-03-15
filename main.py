@@ -252,7 +252,9 @@ def parse_compile_log(
 
 
 def main():
-    parser = argparse.ArgumentParser(description="arxiv-latex-graphics")
+    parser = argparse.ArgumentParser(
+        description="Robust arXiv LaTeX cleaner with DPI-based image rescaling."
+    )
     parser.add_argument(
         "input_file",
         type=str,
