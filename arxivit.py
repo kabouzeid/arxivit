@@ -65,7 +65,7 @@ def arxivit(
                     d[key].width_pt, d[key].height_pt
                 ):
                     console.log(
-                        f"Warning: Image included more than once: {info.filename}",
+                        f"Info: Image included more than once: {info.filename}",
                         style="yellow",
                     )
                     d[key] = info
@@ -194,7 +194,7 @@ def process_image(
             result = f"{im.size[0]}×{im.size[1]} -> {new_size[0]}×{new_size[1]}"
             im_resized = im.resize(new_size, resample=Image.Resampling.LANCZOS)
             if force_jpeg:
-                result += " JPEG"
+                result += f" JPEG:{jpeg_quality}"
                 im_resized = im_resized.convert("RGB")
 
             im_resized.save(
@@ -205,7 +205,7 @@ def process_image(
             )
         else:
             if force_jpeg and im.format != "JPEG":
-                result = "JPEG"
+                result = f"JPEG:{jpeg_quality}"
                 im = im.convert("RGB")
                 im.save(
                     dst,
