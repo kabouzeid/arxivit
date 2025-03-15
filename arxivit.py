@@ -304,7 +304,7 @@ def cli():
         "-o",
         "--output",
         type=str,
-        help="Path to the output. Can be a dir or .tar file.",
+        help="Path to the output. Can either be a dir or a .tar, .zip, or .tar.gz file.",
     )
     parser.add_argument(
         "-d",
@@ -331,16 +331,26 @@ def cli():
     input_file = Path(args.input_file)
     output = args.output
     if output is None:
-        output = input_file.parent.with_suffix(".arxiv.tar")
+        output = input_file.parent.with_suffix(".arxiv.tar.gz")
     output = Path(output)
 
-    if output.suffix == ".tar":
+    archive_format = None
+    archive_base = output.with_suffix("")
+    match output.suffix:
+        case ".tar":
+            archive_format = "tar"
+        case ".zip":
+            archive_format = "zip"
+    if len(output.suffixes) > 1 and output.suffixes[-2:] == [".tar", ".gz"]:
+        archive_format = "gztar"
+        archive_base = archive_base.with_suffix("")
+    if archive_format:
         with tempfile.TemporaryDirectory() as tmp_output:
             tmp_output = Path(tmp_output)
             arxivit(
                 input_file, tmp_output, args.dpi, args.force_jpeg, args.jpeg_quality
             )
-            shutil.make_archive(str(output.with_suffix("")), "tar", tmp_output)
+            shutil.make_archive(str(archive_base), archive_format, tmp_output)
     else:
         os.makedirs(output)  # fail early if it already exists
         arxivit(input_file, output, args.dpi, args.force_jpeg, args.jpeg_quality)
