@@ -1,6 +1,6 @@
 [project]
 name = "arxivit"
-version = "0.2.1"
+version = "0.3.0"
 description = "Robust arXiv LaTeX cleaner with DPI-based image rescaling."
 readme = "README.md"
 authors = [
