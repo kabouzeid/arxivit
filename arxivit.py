@@ -1,5 +1,6 @@
 import argparse
 from dataclasses import dataclass
+import importlib
 from humanize import naturalsize
 import os
 from PIL import Image
@@ -10,6 +11,7 @@ import tempfile
 from pathlib import Path
 from rich.console import Console
 from rich.text import Text
+from importlib import metadata
 
 LATEX_INJECT = r"""\AtBeginDocument{
 \makeatletter
@@ -287,6 +289,11 @@ def parse_compile_log(
 def cli():
     parser = argparse.ArgumentParser(
         description="Robust arXiv LaTeX cleaner with DPI-based image rescaling."
+    )
+    parser.add_argument(
+        "--version",
+        action="version",
+        version=f"%(prog)s {metadata.version('arxivit')}",
     )
     parser.add_argument(
         "input_file",
