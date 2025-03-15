@@ -184,7 +184,7 @@ def process_image(
             scale = None
 
         if (
-            scale and scale < 0.9
+            scale and scale < 0.9  # TODO: make this threshold configurable
         ):  # avoid unnecessary re-encoding for minor size changes
             dpi = im.info.get("dpi", (72, 72))  # default if no dpi info
             new_size = tuple(int(s * scale) for s in im.size)
