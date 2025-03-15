@@ -43,6 +43,7 @@ def arxivit(
     force_jpeg: bool,
     jpeg_quality: int,
 ):
+    input_file = input_file.resolve()
     compile_dir = Path(tempfile.mkdtemp())
     console.print(
         f"🔨 Compiling LaTeX… ({compile_dir / input_file.with_suffix('.log').name})"
@@ -101,7 +102,9 @@ def arxivit(
             dst = output_dir / dep
             if not dst.resolve().is_relative_to(output_dir.resolve()):
                 # will probably never happen, but just in case
-                raise ValueError(f"Dependency {dep} resolves outside of output_dir")
+                raise ValueError(
+                    f"Dependency {dep} would be moved outside of output_dir to: {dst}"
+                )
             dst.parent.mkdir(parents=True, exist_ok=True)
             result, old_size, new_size = process_dependency(
                 input_file.parent / dep,
