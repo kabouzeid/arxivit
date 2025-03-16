@@ -40,6 +40,10 @@ class ImageInfo:
     height_pt: float
 
 
+class CliError(Exception):
+    pass
+
+
 def arxivit(
     input_file: Path,
     output_dir: Path,
@@ -107,7 +111,7 @@ def arxivit(
             dst = output_dir / dep
             if not dst.resolve().is_relative_to(output_dir.resolve()):
                 # will probably never happen, but just in case
-                raise ValueError(
+                raise CliError(
                     f"Dependency {dep} would be moved outside of output_dir to: {dst}."
                 )
             dst.parent.mkdir(parents=True, exist_ok=True)
@@ -334,7 +338,7 @@ def cli():
     try:
         input_file = Path(args.input_file)
         if not input_file.is_file():
-            raise ValueError("Input needs to be a LaTeX file (e.g., main.tex).")
+            raise CliError("Input needs to be a LaTeX file (e.g., main.tex).")
 
         output = args.output
         if output is None:
@@ -359,14 +363,16 @@ def cli():
                 )
                 shutil.make_archive(str(archive_base), archive_format, tmp_output)
         else:
-            os.makedirs(output)  # fail early if it already exists
+            if output.exists():
+                shutil.rmtree(output)
+            os.makedirs(output)
             arxivit(input_file, output, args.dpi, args.force_jpeg, args.jpeg_quality)
 
         console.print(
             Text("🎉 Done! Output saved to ")
             + Text(str(output), style="bright_blue bold")
         )
-    except Exception as e:
+    except CliError as e:
         console.log(f"Error: {e}", style="red")
 
 
