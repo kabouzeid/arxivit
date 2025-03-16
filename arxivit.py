@@ -11,6 +11,7 @@ from pathlib import Path
 from humanize import naturalsize
 from PIL import Image
 from rich.console import Console
+from rich.progress import track
 from rich.text import Text
 
 LATEX_INJECT = r"""\AtBeginDocument{
@@ -51,13 +52,13 @@ def arxivit(
 ):
     input_file = input_file.resolve()
     compile_dir = Path(tempfile.mkdtemp())
-    console.print(
-        Text("🔨 Compiling LaTeX…")
-        + Text(f" {compile_dir / input_file.with_suffix('.log').name}", style="dim")
+    _log_file_text = Text(
+        f" {compile_dir / input_file.with_suffix('.log').name}", style="dim"
     )
-    stdout, deps_file = compile_latex(input_file, compile_dir)
+    with console.status(Text("Compiling LaTeX") + _log_file_text):
+        stdout, deps_file = compile_latex(input_file, compile_dir)
+    console.print(Text("🔨 Compiled LaTeX") + _log_file_text)
 
-    console.print("📜 Parsing compile log…")
     deps, bbl_file, image_infos = parse_compile_log(stdout, deps_file)
     if bbl_file:
         deps.append(
@@ -84,10 +85,10 @@ def arxivit(
         return d
 
     image_infos = merge_image_infos(image_infos)
+    console.print("📜 Parsed compile log")
 
     deps = [dep for dep in deps if dep.suffix != ".aux"]
-    console.print("📦 Processing dependencies…")
-    for dep in deps:
+    for dep in track(deps, console=console, description="📦 Processing dependencies"):
         image_info = None
         for k in [
             str(dep).lower(),
