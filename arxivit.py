@@ -1,17 +1,19 @@
 import argparse
-from dataclasses import dataclass
 import importlib
-from humanize import naturalsize
 import os
-from PIL import Image
 import re
 import shutil
 import subprocess
+import sys
 import tempfile
+from dataclasses import dataclass
+from importlib import metadata
 from pathlib import Path
+
+from humanize import naturalsize
+from PIL import Image
 from rich.console import Console
 from rich.text import Text
-from importlib import metadata
 
 LATEX_INJECT = r"""\AtBeginDocument{
 \makeatletter
@@ -28,7 +30,7 @@ LATEX_INJECT = r"""\AtBeginDocument{
 
 PT_PER_INCH = 72.27  # TeX point conversion (1 inch = 72.27 pt, approx.)
 
-console = Console(soft_wrap=True)
+console = Console(soft_wrap=True, log_time=False, highlight=False, markup=False)
 
 
 @dataclass
@@ -48,7 +50,8 @@ def arxivit(
     input_file = input_file.resolve()
     compile_dir = Path(tempfile.mkdtemp())
     console.print(
-        f"🔨 Compiling LaTeX… ({compile_dir / input_file.with_suffix('.log').name})"
+        Text("🔨 Compiling LaTeX…")
+        + Text(f" {compile_dir / input_file.with_suffix('.log').name}", style="dim")
     )
     stdout, deps_file = compile_latex(input_file, compile_dir)
 
@@ -105,7 +108,7 @@ def arxivit(
             if not dst.resolve().is_relative_to(output_dir.resolve()):
                 # will probably never happen, but just in case
                 raise ValueError(
-                    f"Dependency {dep} would be moved outside of output_dir to: {dst}"
+                    f"Dependency {dep} would be moved outside of output_dir to: {dst}."
                 )
             dst.parent.mkdir(parents=True, exist_ok=True)
             result, old_size, new_size = process_dependency(
@@ -328,34 +331,43 @@ def cli():
 
     args = parser.parse_args()
 
-    input_file = Path(args.input_file)
-    output = args.output
-    if output is None:
-        output = input_file.parent.with_suffix(".arxiv.tar.gz")
-    output = Path(output)
+    try:
+        input_file = Path(args.input_file)
+        if not input_file.is_file():
+            raise ValueError("Input needs to be a LaTeX file (e.g., main.tex).")
 
-    archive_format = None
-    archive_base = output.with_suffix("")
-    match output.suffix:
-        case ".tar":
-            archive_format = "tar"
-        case ".zip":
-            archive_format = "zip"
-    if len(output.suffixes) > 1 and output.suffixes[-2:] == [".tar", ".gz"]:
-        archive_format = "gztar"
-        archive_base = archive_base.with_suffix("")
-    if archive_format:
-        with tempfile.TemporaryDirectory() as tmp_output:
-            tmp_output = Path(tmp_output)
-            arxivit(
-                input_file, tmp_output, args.dpi, args.force_jpeg, args.jpeg_quality
-            )
-            shutil.make_archive(str(archive_base), archive_format, tmp_output)
-    else:
-        os.makedirs(output)  # fail early if it already exists
-        arxivit(input_file, output, args.dpi, args.force_jpeg, args.jpeg_quality)
+        output = args.output
+        if output is None:
+            output = input_file.parent.with_suffix(".arxiv.tar.gz")
+        output = Path(output)
 
-    console.print(f"🎉 Done! Output saved to {output}")
+        archive_format = None
+        archive_base = output.with_suffix("")
+        match output.suffix:
+            case ".tar":
+                archive_format = "tar"
+            case ".zip":
+                archive_format = "zip"
+        if len(output.suffixes) > 1 and output.suffixes[-2:] == [".tar", ".gz"]:
+            archive_format = "gztar"
+            archive_base = archive_base.with_suffix("")
+        if archive_format:
+            with tempfile.TemporaryDirectory() as tmp_output:
+                tmp_output = Path(tmp_output)
+                arxivit(
+                    input_file, tmp_output, args.dpi, args.force_jpeg, args.jpeg_quality
+                )
+                shutil.make_archive(str(archive_base), archive_format, tmp_output)
+        else:
+            os.makedirs(output)  # fail early if it already exists
+            arxivit(input_file, output, args.dpi, args.force_jpeg, args.jpeg_quality)
+
+        console.print(
+            Text("🎉 Done! Output saved to ")
+            + Text(str(output), style="bright_blue bold")
+        )
+    except Exception as e:
+        console.log(f"Error: {e}", style="red")
 
 
 if __name__ == "__main__":
