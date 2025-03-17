@@ -326,6 +326,11 @@ def cli():
         help="Target DPI of embedded images. 300 is a good default for print.",
     )
     parser.add_argument(
+        "--compile",
+        action="store_true",
+        help="Compile the processed archive and output the resulting PDF.",
+    )
+    parser.add_argument(
         "--force-jpeg",
         action="store_true",
         dest="force_jpeg",
@@ -364,14 +369,53 @@ def cli():
             with tempfile.TemporaryDirectory() as tmp_output:
                 tmp_output = Path(tmp_output)
                 arxivit(
-                    input_file, tmp_output, args.dpi, args.force_jpeg, args.jpeg_quality
+                    input_file,
+                    tmp_output,
+                    args.dpi,
+                    args.force_jpeg,
+                    args.jpeg_quality,
                 )
                 shutil.make_archive(str(archive_base), archive_format, tmp_output)
+                if args.compile:
+                    with console.status(Text("Compiling arXiv LaTeX")):
+                        tmp_tex = tmp_output / input_file.name
+                        command = [
+                            "latexmk",
+                            "-pdf",
+                            tmp_tex,
+                        ]
+                        subprocess.run(
+                            command,
+                            cwd=tmp_tex.parent,
+                            capture_output=True,
+                            check=True,
+                        )
+                        pdf = tmp_tex.with_suffix(".pdf")
+                        pdf_size = pdf.stat().st_size
+                        pdf_output_dir = Path(tempfile.mkdtemp())
+                        pdf = Path(shutil.copy(pdf, pdf_output_dir))
+                        shutil.copy(tmp_tex.with_suffix(".log"), pdf_output_dir)
+                        console.print(
+                            Text("🔍 Compiled arXiv PDF saved for inspection to ")
+                            + Text(str(pdf), style="bright_blue bold")
+                            + Text(
+                                f"  => {naturalsize(pdf_size)}",
+                                style="dim",
+                            )
+                        )
         else:
+            if args.compile:
+                raise CliError("Output must be an archive when --compile is set.")
             if output.exists():
                 shutil.rmtree(output)
             os.makedirs(output)
-            arxivit(input_file, output, args.dpi, args.force_jpeg, args.jpeg_quality)
+            arxivit(
+                input_file,
+                output,
+                args.dpi,
+                args.force_jpeg,
+                args.jpeg_quality,
+            )
 
         console.print(
             Text("🎉 Done! Output saved to ")
