@@ -10,8 +10,11 @@ pip install arxivit
 ## Usage  
 
 ```bash
-# Create an uploadable archive: /path/to/paper.arxiv.tar
+# Create an uploadable archive: /path/to/paper.arxiv.tar.gz
 arxivit /path/to/paper/main.tex
+
+# Convert images to JPEG at 300 DPI in the final PDF and save to dir /path/to/output
+arxivit /path/to/paper/main.tex --dpi 300 --force-jpeg --output /path/to/output
 ```
 
 For more options, run:  

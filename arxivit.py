@@ -46,7 +46,7 @@ class CliError(Exception):
 def arxivit(
     input_file: Path,
     output_dir: Path,
-    target_dpi: int,
+    target_dpi: int | None,
     force_jpeg: bool,
     jpeg_quality: int,
 ):
@@ -140,7 +140,7 @@ def process_dependency(
     dep: Path,
     dst: Path,
     image_info: ImageInfo | None,
-    target_dpi: int,
+    target_dpi: int | None,
     force_jpeg: bool,
     jpeg_quality: int,
 ) -> tuple[str | None, int, int]:
@@ -177,13 +177,15 @@ def process_image(
     src: Path,
     dst: Path,
     image_info: ImageInfo | None,
-    target_dpi: int,
+    target_dpi: int | None,
     force_jpeg: bool,
     jpeg_quality: int,
 ) -> str | None:
     result = None
     with Image.open(src) as im:
-        if image_info:
+        if not target_dpi:
+            scale = None
+        elif image_info:
             width_in = image_info.width_pt / PT_PER_INCH
             height_in = image_info.height_pt / PT_PER_INCH
             width_px = int(round(width_in * target_dpi))
@@ -231,9 +233,13 @@ def process_image(
 
 
 def process_pdf(
-    src: Path, dst: Path, image_info: ImageInfo | None, target_dpi: int
-) -> str:
-    # just use /prepress for now
+    src: Path, dst: Path, image_info: ImageInfo | None, target_dpi: int | None
+) -> str | None:
+    if not target_dpi:
+        shutil.copy(src, dst)
+        return None
+
+    # just use /prepress for now, which is 300dpi in src's dimensions
     command = [
         "gs",
         "-o",
@@ -316,20 +322,20 @@ def cli():
         "-d",
         "--dpi",
         type=int,
-        default=300,
-        help="Target DPI of the output_dir images",
+        default=None,
+        help="Target DPI of embedded images. 300 is a good default for print.",
     )
     parser.add_argument(
-        "--no-force-jpeg",
-        action="store_false",
+        "--force-jpeg",
+        action="store_true",
         dest="force_jpeg",
-        help="Don't automatically convert all images to JPEGs.",
+        help="Convert all images to JPEGs",
     )
     parser.add_argument(
         "--jpeg-quality",
         type=int,
         default=95,
-        help="JPEG quality (0-100)",
+        help="JPEG quality (0-100). Will only be used if --force-jpeg or --dpi is set.",
     )
 
     args = parser.parse_args()
