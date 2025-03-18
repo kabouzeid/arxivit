@@ -1,4 +1,7 @@
 # arxivit 🧹
+
+[![image](https://img.shields.io/pypi/v/arxivit.svg)](https://pypi.python.org/pypi/arxivit)
+
 Robust arXiv LaTeX cleaner with DPI-based image rescaling.
 
 ## Installation
