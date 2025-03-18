@@ -428,7 +428,7 @@ def cli():
 
         output = args.output
         if output is None:
-            output = input_file.parent.with_suffix(".arxiv.tar.gz")
+            output = input_file.parent.resolve().with_suffix(".arxiv.tar.gz")
         output = Path(output)
 
         archive_format = None
