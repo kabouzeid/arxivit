@@ -125,7 +125,7 @@ def arxivit(
                 image_info = image_infos[k]
                 break
         if dep.is_absolute():
-            result, old_size, new_size = process_dependency(
+            status_before, status_after, old_size, new_size = process_dependency(
                 dep,
                 output_dir / dep.name,
                 image_info,
@@ -139,18 +139,19 @@ def arxivit(
                     f"Dependency {dep} would be moved outside of output_dir to: {dst}."
                 )
             dst.parent.mkdir(parents=True, exist_ok=True)
-            result, old_size, new_size = process_dependency(
+            status_before, status_after, old_size, new_size = process_dependency(
                 input_file.parent / dep,
                 dst,
                 image_info,
                 image_options,
             )
         console.print(
-            Text(f"   - {str(dep)}")
-            # + Text(f"  [{image_options}]", style="purple")
-            + Text(f"  [{result}]" if result else "", style="green")
+            Text(f"   - {str(dep)}  ")
+            + Text(status_before if status_before else "", style="dim")
+            + Text(" -> " if status_before and status_after else "", style="dim")
+            + Text(status_after if status_after else "", style="green")
             + Text(
-                f" => {naturalsize(new_size)}",
+                f"  => {naturalsize(new_size)}",
                 style="dim",
             )
             + Text(
@@ -165,24 +166,27 @@ def process_dependency(
     dst: Path,
     image_info: ImageInfo | None,
     image_options: ImageOptions | None,
-) -> tuple[str | None, int, int]:
-    result = None
+) -> tuple[str | None, str | None, int, int]:
+    status_before = None
+    status_after = None
     match dep.suffix.lower():
         case ".tex":
-            result = process_latex(dep, dst)
+            status_after = process_latex(dep, dst)
         case ".pdf":
-            result = process_pdf(dep, dst, image_info, image_options)
+            status_after = process_pdf(dep, dst, image_info, image_options)
         case ".png" | ".jpg" | ".jpeg":
-            result = process_image(dep, dst, image_info, image_options)
+            status_before, status_after = process_image(
+                dep, dst, image_info, image_options
+            )
         case _:
             shutil.copy(dep, dst)
-    return result, dep.stat().st_size, dst.stat().st_size
+    return status_before, status_after, dep.stat().st_size, dst.stat().st_size
 
 
 def process_latex(
     src: Path,
     dst: Path,
-):
+) -> str:
     command = ["latexpand", "--keep-includes", f"--output={dst}", src]
     subprocess.run(command, check=True, capture_output=True)
     return "strip comments"
@@ -193,10 +197,11 @@ def process_image(
     dst: Path,
     image_info: ImageInfo | None,
     image_options: ImageOptions | None,
-) -> str | None:
-    result = None
-    if image_options:
-        with Image.open(src) as im:
+) -> tuple[str, str | None]:
+    with Image.open(src) as im:
+        status_before = f"{im.size[0]}×{im.size[1]} {im.format}"
+        status_after = None
+        if image_options:
 
             def compute_scale(size: SizeValue) -> float | None:
                 match size:
@@ -233,10 +238,10 @@ def process_image(
                 new_dpi = tuple(
                     (new_s / s) * dpi for new_s, s, dpi in zip(new_size, im.size, dpi)
                 )
-                result = f"{im.size[0]}×{im.size[1]} -> {new_size[0]}×{new_size[1]}"
+                status_after = f"{new_size[0]}×{new_size[1]}"
                 im_resized = im.resize(new_size, resample=Image.Resampling.LANCZOS)
                 if image_options.jpeg and im.format != "JPEG":
-                    result += f" JPEG:{image_options.jpeg_quality}"
+                    status_after += f" JPEG@{image_options.jpeg_quality}"
                     im_resized = im_resized.convert("RGB")
                     im_resized.save(
                         dst,
@@ -253,7 +258,7 @@ def process_image(
                     )
             else:
                 if image_options.jpeg and im.format != "JPEG":
-                    result = f"JPEG:{image_options.jpeg_quality}"
+                    status_after = f"JPEG@{image_options.jpeg_quality}"
                     im = im.convert("RGB")
                     im.save(
                         dst,
@@ -262,9 +267,9 @@ def process_image(
                     )
                 else:
                     shutil.copy(src, dst)  # avoid re-enconding jpeg
-    else:
-        shutil.copy(src, dst)
-    return result
+        else:
+            shutil.copy(src, dst)
+        return status_before, status_after
 
 
 def process_pdf(
