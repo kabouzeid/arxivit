@@ -13,8 +13,11 @@ pip install arxivit
 # Create an uploadable archive: /path/to/paper.arxiv.tar.gz
 arxivit /path/to/paper/main.tex
 
-# Convert images to JPEG at 300 DPI in the final PDF and save to dir /path/to/output
-arxivit /path/to/paper/main.tex --dpi 300 --force-jpeg --output /path/to/output
+# Convert images to JPEG at max 300 DPI in the final PDF and save to dir /path/to/output
+arxivit /path/to/paper/main.tex --image-options 'jpeg,300dpi' --output /path/to/output
+
+# Convert images to max 300 DPI in the final PDF, images in figures/pca/ to max 1000px
+arxivit /path/to/paper/main.tex --image-options '300dpi' --image-options 'figures/pca/*:1000px'
 ```
 
 For more options, run:  

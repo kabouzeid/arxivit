@@ -7,7 +7,9 @@ import tempfile
 from dataclasses import dataclass
 from importlib import metadata
 from pathlib import Path
+from typing import Callable
 
+import pathspec
 from humanize import naturalsize
 from PIL import Image
 from rich.console import Console
@@ -39,6 +41,28 @@ class ImageInfo:
     height_pt: float
 
 
+@dataclass
+class SizeValue:
+    value: int
+
+
+@dataclass
+class DpiValue(SizeValue):
+    pass
+
+
+@dataclass
+class PxValue(SizeValue):
+    pass
+
+
+@dataclass
+class ImageOptions:
+    sizes: list[SizeValue]
+    jpeg: bool
+    jpeg_quality: int
+
+
 class CliError(Exception):
     pass
 
@@ -46,9 +70,7 @@ class CliError(Exception):
 def arxivit(
     input_file: Path,
     output_dir: Path,
-    target_dpi: int | None,
-    force_jpeg: bool,
-    jpeg_quality: int,
+    image_options_list: list[tuple[Callable[[Path], bool], ImageOptions]],
 ):
     input_file = input_file.resolve()
     compile_dir = Path(tempfile.mkdtemp())
@@ -89,6 +111,11 @@ def arxivit(
 
     deps = [dep for dep in deps if dep.suffix != ".aux"]
     for dep in track(deps, console=console, description="📦 Processing dependencies"):
+        image_options = None
+        for match, im_opts in reversed(image_options_list):
+            if match(dep):
+                image_options = im_opts
+                break
         image_info = None
         for k in [
             str(dep).lower(),
@@ -102,9 +129,7 @@ def arxivit(
                 dep,
                 output_dir / dep.name,
                 image_info,
-                target_dpi,
-                force_jpeg,
-                jpeg_quality,
+                image_options,
             )
         else:
             dst = output_dir / dep
@@ -118,12 +143,11 @@ def arxivit(
                 input_file.parent / dep,
                 dst,
                 image_info,
-                target_dpi,
-                force_jpeg,
-                jpeg_quality,
+                image_options,
             )
         console.print(
             Text(f"   - {str(dep)}")
+            # + Text(f"  [{image_options}]", style="purple")
             + Text(f"  [{result}]" if result else "", style="green")
             + Text(
                 f" => {naturalsize(new_size)}",
@@ -140,25 +164,16 @@ def process_dependency(
     dep: Path,
     dst: Path,
     image_info: ImageInfo | None,
-    target_dpi: int | None,
-    force_jpeg: bool,
-    jpeg_quality: int,
+    image_options: ImageOptions | None,
 ) -> tuple[str | None, int, int]:
     result = None
     match dep.suffix.lower():
         case ".tex":
             result = process_latex(dep, dst)
         case ".pdf":
-            result = process_pdf(dep, dst, image_info, target_dpi)
+            result = process_pdf(dep, dst, image_info, image_options)
         case ".png" | ".jpg" | ".jpeg":
-            result = process_image(
-                dep,
-                dst,
-                image_info,
-                target_dpi,
-                force_jpeg=force_jpeg,
-                jpeg_quality=jpeg_quality,
-            )
+            result = process_image(dep, dst, image_info, image_options)
         case _:
             shutil.copy(dep, dst)
     return result, dep.stat().st_size, dst.stat().st_size
@@ -177,67 +192,95 @@ def process_image(
     src: Path,
     dst: Path,
     image_info: ImageInfo | None,
-    target_dpi: int | None,
-    force_jpeg: bool,
-    jpeg_quality: int,
+    image_options: ImageOptions | None,
 ) -> str | None:
     result = None
-    with Image.open(src) as im:
-        if not target_dpi:
-            scale = None
-        elif image_info:
-            width_in = image_info.width_pt / PT_PER_INCH
-            height_in = image_info.height_pt / PT_PER_INCH
-            width_px = int(round(width_in * target_dpi))
-            height_px = int(round(height_in * target_dpi))
-            scale = max(width_px, height_px) / max(im.size)
-        else:
-            console.log(
-                f"Warning: No image size found in LaTeX compile log: {src.name}",
-                style="yellow",
-            )
-            scale = None
+    if image_options:
+        with Image.open(src) as im:
 
-        if (
-            scale and scale < 0.9  # TODO: make this threshold configurable
-        ):  # avoid unnecessary re-encoding for minor size changes
-            dpi = im.info.get("dpi", (72, 72))  # default if no dpi info
-            new_size = tuple(int(s * scale) for s in im.size)
-            new_dpi = tuple(
-                (new_s / s) * dpi for new_s, s, dpi in zip(new_size, im.size, dpi)
-            )
-            result = f"{im.size[0]}×{im.size[1]} -> {new_size[0]}×{new_size[1]}"
-            im_resized = im.resize(new_size, resample=Image.Resampling.LANCZOS)
-            if force_jpeg:
-                result += f" JPEG:{jpeg_quality}"
-                im_resized = im_resized.convert("RGB")
+            def compute_scale(size: SizeValue) -> float | None:
+                match size:
+                    case PxValue(px):
+                        return px / max(im.size)
+                    case DpiValue(dpi):
+                        if image_info:
+                            max_in = (
+                                max(image_info.width_pt, image_info.height_pt)
+                                / PT_PER_INCH
+                            )
+                            max_px = int(round(max_in * dpi))
+                            return max_px / max(im.size)
+                        else:
+                            console.log(
+                                f"Warning: No image size found in LaTeX compile log: {src.name}",
+                                style="yellow",
+                            )
+                            return None
+                    case _:
+                        raise ValueError("Invalid image size option")
 
-            im_resized.save(
-                dst,
-                "JPEG" if force_jpeg else None,
-                dpi=new_dpi,
-                quality=jpeg_quality,
-            )
-        else:
-            if force_jpeg and im.format != "JPEG":
-                result = f"JPEG:{jpeg_quality}"
-                im = im.convert("RGB")
-                im.save(
-                    dst,
-                    "JPEG",
-                    quality=jpeg_quality,
-                )
+            scales = [compute_scale(size) for size in image_options.sizes]
+            if None not in scales and len(scales) > 0:
+                scale = max(scales)  # type: ignore
             else:
-                shutil.copy(src, dst)  # avoid re-enconding jpeg
-        return result
+                scale = None
+
+            if (
+                scale and scale < 0.9  # TODO: make this threshold configurable
+            ):  # avoid unnecessary re-encoding for minor size changes
+                dpi = im.info.get("dpi", (72, 72))  # default if no dpi info
+                new_size = tuple(int(s * scale) for s in im.size)
+                new_dpi = tuple(
+                    (new_s / s) * dpi for new_s, s, dpi in zip(new_size, im.size, dpi)
+                )
+                result = f"{im.size[0]}×{im.size[1]} -> {new_size[0]}×{new_size[1]}"
+                im_resized = im.resize(new_size, resample=Image.Resampling.LANCZOS)
+                if image_options.jpeg and im.format != "JPEG":
+                    result += f" JPEG:{image_options.jpeg_quality}"
+                    im_resized = im_resized.convert("RGB")
+                    im_resized.save(
+                        dst,
+                        "JPEG",
+                        dpi=new_dpi,
+                        quality=image_options.jpeg_quality,
+                    )
+                else:
+                    im_resized.save(
+                        dst,
+                        im.format,
+                        dpi=new_dpi,
+                        quality=image_options.jpeg_quality,  # only relevant for JPEG
+                    )
+            else:
+                if image_options.jpeg and im.format != "JPEG":
+                    result = f"JPEG:{image_options.jpeg_quality}"
+                    im = im.convert("RGB")
+                    im.save(
+                        dst,
+                        "JPEG",
+                        quality=image_options.jpeg_quality,
+                    )
+                else:
+                    shutil.copy(src, dst)  # avoid re-enconding jpeg
+    else:
+        shutil.copy(src, dst)
+    return result
 
 
 def process_pdf(
-    src: Path, dst: Path, image_info: ImageInfo | None, target_dpi: int | None
+    src: Path,
+    dst: Path,
+    image_info: ImageInfo | None,
+    image_options: ImageOptions | None,
 ) -> str | None:
-    if not target_dpi:
+    if not image_options or not image_options.sizes:
         shutil.copy(src, dst)
         return None
+
+    console.log(
+        "Warning: PDFs are currently always processed with /prepress; the provided dpi and px values are ignored.",
+        style="yellow",
+    )
 
     # just use /prepress for now, which is 300dpi in src's dimensions
     command = [
@@ -298,6 +341,34 @@ def parse_compile_log(
     return deps, bbl_file, image_infos
 
 
+def parse_image_options(
+    image_options: str,
+    jpeg_quality: int,
+) -> tuple[Callable[[Path], bool], ImageOptions]:
+    path, options = (
+        image_options.rsplit(":", 1) if ":" in image_options else (None, image_options)
+    )
+    options = options.split(",")
+    size = []
+    jpeg = False
+    for opt in options:
+        if opt.endswith("dpi"):
+            size.append(DpiValue(int(opt[:-3])))
+        elif opt.endswith("px"):
+            size.append(PxValue(int(opt[:-2])))
+        elif opt.startswith("jpeg"):
+            if "@" in opt:
+                jpeg_quality = int(opt.split("@")[1])
+            jpeg = True
+        elif opt == "":
+            pass
+        else:
+            raise CliError(f"Invalid image option: {opt}")
+    return pathspec.PathSpec.from_lines(
+        "gitwildmatch", [path]
+    ).match_file if path else lambda _: True, ImageOptions(size, jpeg, jpeg_quality)
+
+
 def cli():
     parser = argparse.ArgumentParser(
         description="Robust arXiv LaTeX cleaner with DPI-based image rescaling."
@@ -319,31 +390,31 @@ def cli():
         help="Path to the output. Can either be a dir or a .tar, .zip, or .tar.gz file.",
     )
     parser.add_argument(
-        "-d",
-        "--dpi",
-        type=int,
-        default=None,
-        help="Target DPI of embedded images. 300 is a good default for print.",
-    )
-    parser.add_argument(
         "--compile",
         action="store_true",
         help="Compile the processed archive and output the resulting PDF.",
     )
     parser.add_argument(
-        "--force-jpeg",
-        action="store_true",
-        dest="force_jpeg",
-        help="Convert all images to JPEGs",
+        "-i",
+        "--image-options",
+        type=str,
+        default=[],
+        action="extend",
+        nargs="+",
+        help="Provide options for image processing in the form '[path:]options'. path: is optional and can be in .gitignore format, options is a comma separated list of dpi, px and jpeg options. For example, --image-options 'figures/qualitative/*:300dpi,jpeg'.",
     )
     parser.add_argument(
         "--jpeg-quality",
         type=int,
         default=95,
-        help="JPEG quality (0-100). Will only be used if --force-jpeg or --dpi is set.",
+        help="Default JPEG quality (0-100) when not explicitly provided with e.g. 'jpeg@95'.",
     )
 
     args = parser.parse_args()
+
+    image_options_list = [
+        parse_image_options(opt, args.jpeg_quality) for opt in args.image_options
+    ]
 
     try:
         input_file = Path(args.input_file)
@@ -368,13 +439,7 @@ def cli():
         if archive_format:
             with tempfile.TemporaryDirectory() as tmp_output:
                 tmp_output = Path(tmp_output)
-                arxivit(
-                    input_file,
-                    tmp_output,
-                    args.dpi,
-                    args.force_jpeg,
-                    args.jpeg_quality,
-                )
+                arxivit(input_file, tmp_output, image_options_list)
                 shutil.make_archive(str(archive_base), archive_format, tmp_output)
                 if args.compile:
                     with console.status(Text("Compiling arXiv LaTeX")):
@@ -409,13 +474,7 @@ def cli():
             if output.exists():
                 shutil.rmtree(output)
             os.makedirs(output)
-            arxivit(
-                input_file,
-                output,
-                args.dpi,
-                args.force_jpeg,
-                args.jpeg_quality,
-            )
+            arxivit(input_file, output, image_options_list)
 
         console.print(
             Text("🎉 Done! Output saved to ")
