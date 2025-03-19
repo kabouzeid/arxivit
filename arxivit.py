@@ -217,7 +217,7 @@ def process_image(
                             return max_px / max(im.size)
                         else:
                             console.log(
-                                f"Warning: No image size found in LaTeX compile log: {src.name}",
+                                "Warning: No image size found in LaTeX compile log.",
                                 style="yellow",
                             )
                             return None
@@ -241,14 +241,21 @@ def process_image(
                 status_after = f"{new_size[0]}×{new_size[1]}"
                 im_resized = im.resize(new_size, resample=Image.Resampling.LANCZOS)
                 if image_options.jpeg and im.format != "JPEG":
-                    status_after += f" JPEG@{image_options.jpeg_quality}"
-                    im_resized = im_resized.convert("RGB")
-                    im_resized.save(
-                        dst,
-                        "JPEG",
-                        dpi=new_dpi,
-                        quality=image_options.jpeg_quality,
-                    )
+                    try:
+                        im_resized.save(
+                            dst,
+                            "JPEG",
+                            dpi=new_dpi,
+                            quality=image_options.jpeg_quality,
+                        )
+                        status_after += f" JPEG@{image_options.jpeg_quality}"
+                    except OSError as e:  # color mode not supported
+                        console.log(f"Error: {str(e)}", style="red")
+                        im_resized.save(
+                            dst,
+                            im.format,
+                            dpi=new_dpi,
+                        )
                 else:
                     im_resized.save(
                         dst,
@@ -258,13 +265,16 @@ def process_image(
                     )
             else:
                 if image_options.jpeg and im.format != "JPEG":
-                    status_after = f"JPEG@{image_options.jpeg_quality}"
-                    im = im.convert("RGB")
-                    im.save(
-                        dst,
-                        "JPEG",
-                        quality=image_options.jpeg_quality,
-                    )
+                    try:
+                        im.save(
+                            dst,
+                            "JPEG",
+                            quality=image_options.jpeg_quality,
+                        )
+                        status_after = f"JPEG@{image_options.jpeg_quality}"
+                    except OSError as e:  # color mode not supported
+                        console.log(f"Error: {str(e)}", style="red")
+                        shutil.copy(src, dst)
                 else:
                     shutil.copy(src, dst)  # avoid re-enconding jpeg
         else:
