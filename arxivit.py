@@ -71,94 +71,101 @@ def arxivit(
     input_file: Path,
     output_dir: Path,
     image_options_list: list[tuple[Callable[[Path], bool], ImageOptions]],
+    debug: bool,
 ):
     input_file = input_file.resolve()
-    compile_dir = Path(tempfile.mkdtemp())
-    _log_file_text = Text(
-        f" {compile_dir / input_file.with_suffix('.log').name}", style="dim"
-    )
-    with console.status(Text("Compiling LaTeX") + _log_file_text):
-        stdout, deps_file = compile_latex(input_file, compile_dir)
-    console.print(Text("🔨 Compiled LaTeX") + _log_file_text)
+    with tempfile.TemporaryDirectory(delete=not debug) as compile_dir:
+        compile_dir = Path(compile_dir)
+        _log_file_text = Text(f" dir: {compile_dir}" if debug else "", style="dim")
+        with console.status(Text("Compiling LaTeX") + _log_file_text):
+            stdout, deps_file = compile_latex(input_file, compile_dir)
+        console.print(Text("🔨 Compiled LaTeX") + _log_file_text)
 
-    deps, bbl_file, image_infos = parse_compile_log(stdout, deps_file)
-    if bbl_file:
-        deps.append(
-            bbl_file if bbl_file.is_absolute() else input_file.parent / bbl_file
-        )
-    else:
-        console.log("Warning: No bbl file found.", style="yellow")
+        if debug:
+            console.print(Text("📜 Log:") + _log_file_text)
+            print(stdout)
+            print(deps_file.read_text())
 
-    def merge_image_infos(image_infos: list[ImageInfo]) -> dict[str, ImageInfo]:
-        d: dict[str, ImageInfo] = {}
-        for info in image_infos:
-            key = info.filename.lower()  # latex allows case-insensitive filenames
-            if key in d:
-                if max(info.width_pt, info.height_pt) > max(
-                    d[key].width_pt, d[key].height_pt
-                ):
-                    console.log(
-                        f"Info: Image included more than once: {info.filename}",
-                        style="yellow",
-                    )
-                    d[key] = info
-            else:
-                d[key] = info
-        return d
-
-    image_infos = merge_image_infos(image_infos)
-    console.print("📜 Parsed compile log")
-
-    deps = [dep for dep in deps if dep.suffix != ".aux"]
-    for dep in track(deps, console=console, description="📦 Processing dependencies"):
-        image_options = None
-        for match, im_opts in reversed(image_options_list):
-            if match(dep):
-                image_options = im_opts
-                break
-        image_info = None
-        for k in [
-            str(dep).lower(),
-            str(dep.with_suffix("")).lower(),
-        ]:  # TODO: make this more robust. handle \graphicspath, etc.
-            if k in image_infos:
-                image_info = image_infos[k]
-                break
-        if dep.is_absolute():
-            status_before, status_after, old_size, new_size = process_dependency(
-                dep,
-                output_dir / dep.name,
-                image_info,
-                image_options,
+        deps, bbl_file, image_infos = parse_compile_log(stdout, deps_file)
+        if bbl_file:
+            deps.append(
+                bbl_file if bbl_file.is_absolute() else input_file.parent / bbl_file
             )
         else:
-            dst = output_dir / dep
-            if not dst.resolve().is_relative_to(output_dir.resolve()):
-                # will probably never happen, but just in case
-                raise CliError(
-                    f"Dependency {dep} would be moved outside of output_dir to: {dst}."
+            console.log("Warning: No bbl file found.", style="yellow")
+
+        def merge_image_infos(image_infos: list[ImageInfo]) -> dict[str, ImageInfo]:
+            d: dict[str, ImageInfo] = {}
+            for info in image_infos:
+                key = info.filename.lower()  # latex allows case-insensitive filenames
+                if key in d:
+                    if max(info.width_pt, info.height_pt) > max(
+                        d[key].width_pt, d[key].height_pt
+                    ):
+                        console.log(
+                            f"Info: Image included more than once: {info.filename}",
+                            style="yellow",
+                        )
+                        d[key] = info
+                else:
+                    d[key] = info
+            return d
+
+        image_infos = merge_image_infos(image_infos)
+        console.print("📜 Parsed compile log")
+
+        deps = [dep for dep in deps if dep.suffix != ".aux"]
+        for dep in track(
+            deps, console=console, description="📦 Processing dependencies"
+        ):
+            image_options = None
+            for match, im_opts in reversed(image_options_list):
+                if match(dep):
+                    image_options = im_opts
+                    break
+            image_info = None
+            for k in [
+                str(dep).lower(),
+                str(dep.with_suffix("")).lower(),
+            ]:  # TODO: make this more robust. handle \graphicspath, etc.
+                if k in image_infos:
+                    image_info = image_infos[k]
+                    break
+            if dep.is_absolute():
+                status_before, status_after, old_size, new_size = process_dependency(
+                    dep,
+                    output_dir / dep.name,
+                    image_info,
+                    image_options,
                 )
-            dst.parent.mkdir(parents=True, exist_ok=True)
-            status_before, status_after, old_size, new_size = process_dependency(
-                input_file.parent / dep,
-                dst,
-                image_info,
-                image_options,
+            else:
+                dst = output_dir / dep
+                if not dst.resolve().is_relative_to(output_dir.resolve()):
+                    # will probably never happen, but just in case
+                    raise CliError(
+                        f"Dependency {dep} would be moved outside of output_dir to: {dst}."
+                    )
+                dst.parent.mkdir(parents=True, exist_ok=True)
+                status_before, status_after, old_size, new_size = process_dependency(
+                    input_file.parent / dep,
+                    dst,
+                    image_info,
+                    image_options,
+                )
+            console.print(
+                Text(f"   - {str(dep)}  ")
+                + Text(status_before if status_before else "", style="dim")
+                + Text(" -> " if status_before and status_after else "", style="dim")
+                + Text(status_after if status_after else "", style="green")
+                + Text(
+                    f"  => {naturalsize(new_size)}",
+                    style="dim",
+                )
+                + Text(
+                    f" {int((new_size / old_size) * 100)}%",
+                    style="blue bold",
+                )
             )
-        console.print(
-            Text(f"   - {str(dep)}  ")
-            + Text(status_before if status_before else "", style="dim")
-            + Text(" -> " if status_before and status_after else "", style="dim")
-            + Text(status_after if status_after else "", style="green")
-            + Text(
-                f"  => {naturalsize(new_size)}",
-                style="dim",
-            )
-            + Text(
-                f" {int((new_size / old_size) * 100)}%",
-                style="blue bold",
-            )
-        )
 
 
 def process_dependency(
@@ -202,6 +209,13 @@ def process_image(
         status_before = f"{im.size[0]}×{im.size[1]} {im.format}"
         status_after = None
         if image_options:
+            to_jpeg = image_options.jpeg and im.format != "JPEG"
+            if to_jpeg and im.mode == "RGBA":
+                alpha = im.getchannel("A")
+                # Check if all alpha values are 255 (fully opaque)
+                if alpha.getextrema()[0] == 255:  # type: ignore
+                    im = im.convert("RGB")
+                # else: will error later
 
             def compute_scale(size: SizeValue) -> float | None:
                 match size:
@@ -240,7 +254,7 @@ def process_image(
                 )
                 status_after = f"{new_size[0]}×{new_size[1]}"
                 im_resized = im.resize(new_size, resample=Image.Resampling.LANCZOS)
-                if image_options.jpeg and im.format != "JPEG":
+                if to_jpeg:
                     try:
                         im_resized.save(
                             dst,
@@ -264,7 +278,7 @@ def process_image(
                         quality=image_options.jpeg_quality,  # only relevant for JPEG
                     )
             else:
-                if image_options.jpeg and im.format != "JPEG":
+                if to_jpeg:
                     try:
                         im.save(
                             dst,
@@ -341,7 +355,9 @@ def parse_compile_log(
     with open(deps_file, "r") as f:
         deps = f.read().splitlines()
     deps = [Path(dep.strip().rstrip("\\")) for dep in deps if dep.startswith("    ")]
-    deps = [dep for dep in deps if not dep.is_absolute()]
+    deps = [
+        dep for dep in deps if not dep.is_absolute()
+    ]  # TODO: handle absolute paths that lie in the input_file's parent
 
     bbl_file = find_last_path(r"Latexmk: Found input bbl file '(.+)'", stdout)
 
@@ -424,6 +440,11 @@ def cli():
         default=95,
         help="Default JPEG quality (0-100) when not explicitly provided with e.g. 'jpeg@95'.",
     )
+    parser.add_argument(
+        "--debug",
+        action="store_true",
+        help="Keep temporary files and show more detailed output.",
+    )
 
     args = parser.parse_args()
 
@@ -454,7 +475,7 @@ def cli():
         if archive_format:
             with tempfile.TemporaryDirectory() as tmp_output:
                 tmp_output = Path(tmp_output)
-                arxivit(input_file, tmp_output, image_options_list)
+                arxivit(input_file, tmp_output, image_options_list, debug=args.debug)
                 shutil.make_archive(str(archive_base), archive_format, tmp_output)
                 if args.compile:
                     with console.status(Text("Compiling arXiv LaTeX")):
@@ -489,7 +510,7 @@ def cli():
             if output.exists():
                 shutil.rmtree(output)
             os.makedirs(output)
-            arxivit(input_file, output, image_options_list)
+            arxivit(input_file, output, image_options_list, debug=args.debug)
 
         console.print(
             Text("🎉 Done! Output saved to ")
