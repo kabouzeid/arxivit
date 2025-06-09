@@ -86,13 +86,25 @@ def arxivit(
             print(stdout)
             print(deps_file.read_text())
 
-        deps, bbl_file, image_infos = parse_compile_log(stdout, deps_file)
-        if bbl_file:
+        deps, bbl_files, image_infos = parse_compile_log(stdout, deps_file)
+        if len(bbl_files) == 0:
+            console.log("Warning: No bbl file(s) found in compile log.", style="yellow")
+            # fallback to heuristic: look for .bib files in deps and look for matching .bbl files
+            for bib_file in [dep for dep in deps if dep.suffix == ".bib"]:
+                if (f := compile_dir / bib_file.with_suffix(".bbl")).exists():
+                    bbl_files.append(f.absolute())
+                elif (f := input_file.parent / bib_file.with_suffix(".bbl")).exists():
+                    bbl_files.append(f)
+                else:
+                    console.log(
+                        f"Warning: No bbl file found for {bib_file}. "
+                        "You might need to run bibtex manually.",
+                        style="yellow",
+                    )
+        for bbl_file in bbl_files:
             deps.append(
                 bbl_file if bbl_file.is_absolute() else input_file.parent / bbl_file
             )
-        else:
-            console.log("Warning: No bbl file found.", style="yellow")
 
         def merge_image_infos(image_infos: list[ImageInfo]) -> dict[str, ImageInfo]:
             d: dict[str, ImageInfo] = {}
@@ -345,13 +357,7 @@ def compile_latex(input_file: Path, compile_dir: Path) -> tuple[str, Path]:
 
 def parse_compile_log(
     stdout: str, deps_file
-) -> tuple[list[Path], Path | None, list[ImageInfo]]:
-    def find_last_path(pattern, string) -> Path | None:
-        matches = re.findall(pattern, string)
-        if matches:
-            return Path(matches[-1])
-        return None
-
+) -> tuple[list[Path], list[Path], list[ImageInfo]]:
     with open(deps_file, "r") as f:
         deps = f.read().splitlines()
     deps = [Path(dep.strip().rstrip("\\")) for dep in deps if dep.startswith("    ")]
@@ -359,7 +365,7 @@ def parse_compile_log(
         dep for dep in deps if not dep.is_absolute()
     ]  # TODO: handle absolute paths that lie in the input_file's parent
 
-    bbl_file = find_last_path(r"Latexmk: Found input bbl file '(.+)'", stdout)
+    bbl_files = [Path(match) for match in re.findall(r"Latexmk: Found input bbl file '(.+)'", stdout)]
 
     image_infos = [
         ImageInfo(filename=n, width_pt=float(w), height_pt=float(h))
@@ -369,7 +375,7 @@ def parse_compile_log(
         )
     ]
 
-    return deps, bbl_file, image_infos
+    return deps, bbl_files, image_infos
 
 
 def parse_image_options(
