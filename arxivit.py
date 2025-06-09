@@ -365,7 +365,14 @@ def parse_compile_log(
         dep for dep in deps if not dep.is_absolute()
     ]  # TODO: handle absolute paths that lie in the input_file's parent
 
-    bbl_files = [Path(match) for match in re.findall(r"Latexmk: Found input bbl file '(.+)'", stdout)]
+    bbl_files = list(
+        dict.fromkeys(  # remove duplicates while preserving order
+            [
+                Path(match)
+                for match in re.findall(r"Latexmk: Found input bbl file '(.+)'", stdout)
+            ]
+        )
+    )
 
     image_infos = [
         ImageInfo(filename=n, width_pt=float(w), height_pt=float(h))
