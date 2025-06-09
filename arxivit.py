@@ -88,19 +88,34 @@ def arxivit(
 
         deps, bbl_files, image_infos = parse_compile_log(stdout, deps_file)
         if len(bbl_files) == 0:
-            console.log("Warning: No bbl file(s) found in compile log.", style="yellow")
-            # fallback to heuristic: look for .bib files in deps and look for matching .bbl files
-            for bib_file in [dep for dep in deps if dep.suffix == ".bib"]:
-                if (f := compile_dir / bib_file.with_suffix(".bbl")).exists():
-                    bbl_files.append(f.absolute())
-                elif (f := input_file.parent / bib_file.with_suffix(".bbl")).exists():
-                    bbl_files.append(f)
-                else:
-                    console.log(
-                        f"Warning: No bbl file found for {bib_file}. "
-                        "You might need to run bibtex manually.",
-                        style="yellow",
-                    )
+            console.log(
+                "Warning: No bbl files found in compile log. "
+                "This is expected if you don't use bibtex.",
+                style="yellow",
+            )
+            if (f := compile_dir / input_file.with_suffix(".bbl").name).exists():
+                console.log(
+                    f"Info: Found bbl file {f} in compile directory.",
+                    style="blue",
+                )
+                bbl_files.append(f.absolute())
+            elif (f := input_file.with_suffix(".bbl")).exists():
+                console.log(
+                    f"Info: Found bbl file {f} in input directory.",
+                    style="blue",
+                )
+                bbl_files.append(f)
+            else:
+                console.log(
+                    "Warning: No bbl file found in the input or compile directories. "
+                    "You might need to run bibtex manually.",
+                    style="yellow",
+                )
+        elif len(bbl_files) > 1:
+            console.log(
+                f"Warning: Found more than one ({len(bbl_files)}) bbl files in compile log.",
+                style="yellow",
+            )
         for bbl_file in bbl_files:
             deps.append(
                 bbl_file if bbl_file.is_absolute() else input_file.parent / bbl_file
